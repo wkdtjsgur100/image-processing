@@ -1,1 +1,3 @@
-MFC 기반 C++ 영상처리
+Image Processing 
+MFC
+C++
