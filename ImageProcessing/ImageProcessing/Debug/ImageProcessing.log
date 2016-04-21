@@ -1,0 +1,4 @@
+﻿  ImageProcessingDlg.cpp
+c:\users\장선혁\documents\visual studio 2015\projects\imageprocessing\imageprocessing\imageprocessingdlg.cpp(38): warning C4244: '=': 'double'에서 'BYTE'(으)로 변환하면서 데이터가 손실될 수 있습니다.
+c:\users\장선혁\documents\visual studio 2015\projects\imageprocessing\imageprocessing\imageprocessingdlg.cpp(88): warning C4244: '=': 'double'에서 'BYTE'(으)로 변환하면서 데이터가 손실될 수 있습니다.
+  ImageProcessing.vcxproj -> C:\Users\장선혁\Documents\Visual Studio 2015\Projects\ImageProcessing\Debug\ImageProcessing.exe
