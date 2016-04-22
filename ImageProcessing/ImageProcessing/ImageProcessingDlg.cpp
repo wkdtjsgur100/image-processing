@@ -7,6 +7,8 @@
 #include "ImageProcessingDlg.h"
 #include "afxdialogex.h"
 #include <Vfw.h>
+#define _USE_MATH_DEFINES
+#include <math.h>
 
 #pragma comment(lib, "vfw32.lib")
 
@@ -31,7 +33,8 @@ void filtering(LPBYTE inputImg, LPBYTE output, double **mask,int mask_length)
 				for (int jOffset = -mask_length/2; jOffset <= mask_length/2; jOffset++)
 				{
 					int currentCnt = cnt + (BM_WIDTH*iOffset) + jOffset;
-					pxValue += (mask[iOffset+mask_length/2][jOffset+mask_length/2] * inputImg[currentCnt]);
+					if (currentCnt >= 0 && currentCnt<BM_WIDTH*BM_HEIGHT)
+						pxValue += (mask[iOffset+mask_length/2][jOffset+mask_length/2] * inputImg[currentCnt]);
 				}
 			}
 
@@ -89,6 +92,156 @@ void sobelFiltering(LPBYTE grayImg, LPBYTE output)
 		}
 	}
 }
+
+void cannyEdge(LPBYTE grayImg, LPBYTE output ,int nThHi ,int nThLo)
+{
+	int sobelX[9] = {
+		-1,0,1,
+		-2,0,2,
+		-1,0,1 };
+	int sobelY[9] = {
+		1,2,1,
+		0,0,0,
+		-1,-2,-1 };
+
+	int cnt = 0;
+	double *pMag = new double[BM_WIDTH*BM_HEIGHT]; // 경계선의 세기
+	LPBYTE pAng = new BYTE[BM_WIDTH*BM_HEIGHT]; // 경계선의 방향
+	for (int r = 1; r < BM_HEIGHT - 1; r++)
+	{
+		for (int c = 1; c < BM_WIDTH - 1; c++)
+		{
+			int sumX = 0;
+			int sumY = 0;
+			for (int y = -1; y <= 1; y++)
+			{
+				for (int x = -1; x <= 1; x++)
+				{
+					sumX += (sobelX[3 * (y + 1) + x + 1] * grayImg[cnt + BM_WIDTH*y + x]);
+					sumY += (sobelY[3 * (y + 1) + x + 1] * grayImg[cnt + BM_WIDTH*y + x]);
+				}
+			}
+			double sum = (sumX*sumX + sumY*sumY);
+			pMag[cnt] = sqrt(sum); // 경계선의 세기를 구했다
+
+			// 경계선의 방향(각도) 구하기
+			double theta;
+			if (pMag[cnt] == 0)
+				if(sumY==0)theta=0;
+				else theta=90;
+			else
+				theta=atan2((float)sumY, (float)sumX)*180.0/M_PI;
+
+			if ((theta > -22.5 && theta < 22.5) || theta > 157.5 || theta < -157.5)
+				pAng[cnt] = 0;
+
+			else if ((theta >= 22.5 && theta < 67.5) || (theta >= -157.5 && theta < -112.5))
+				pAng[cnt] = 45;
+			
+			else if ((theta >= 67.5 && theta <= 112.5) || (theta >= -112.5 && theta <= -67.5))
+				pAng[cnt] = 90;
+			
+			else
+				pAng[cnt] = 135;
+			
+			cnt++;
+		}
+	}
+	// 위에서 구한값(세기와 방향)으로 비최대값 억제
+	LPBYTE pCand = new BYTE[BM_WIDTH*BM_HEIGHT]; // 경계선 후보저장
+	cnt=0;
+	for (int r = 1; r < BM_HEIGHT - 1; r++)
+	{
+		for (int c = 1; c < BM_WIDTH - 1; c++)
+		{
+			switch (pAng[cnt])
+			{
+			case 0:
+				if( pMag[cnt] > pMag[cnt-1] && pMag[cnt] > pMag[cnt+1])
+					pCand[cnt] = 255;
+			case 45:	
+				if (pMag[cnt] > pMag[cnt - nWStepG + 1] && pMag[cnt] > pMag[cnt + nWStepG - 1])
+				{
+					pCand[cnt] = 255;
+				}
+				break;
+			case 90:		
+				if (pMag[cnt] > pMag[cnt - nWStepG] && pMag[cnt] > pMag[cnt + nWStepG])
+				{
+					pCand[cnt] = 255;
+				}
+				break;
+			case 135:	
+				if (pMag[cnt] > pMag[cnt - nWStepG - 1] && pMag[cnt] > pMag[cnt + nWStepG + 1])
+				{
+					pCand[cnt] = 255;
+				}
+				break;
+			}
+			cnt++;
+		}
+	}
+
+	// 위에서 구한값(경계선후보)으로 문턱값검사 후 output으로 저장
+	cnt=0;
+	for (int r = 1; r < BM_HEIGHT - 1; r++)
+	{
+		for (int c = 1; c < BM_WIDTH - 1; c++)
+		{
+			output[cnt]=0;
+			if (pCand[cnt])
+			{
+				if (pMag[cnt] > nThHi)
+				{
+					output[cnt] = 255;
+				}
+				else if (pMag[cnt] > nThLo) // 연결된 픽셀 검사
+				{
+					bool bIsEdge = true;
+					switch (pAng[cnt])
+					{
+					case 0:		// 90도 방향 검사
+						if ((pMag[cnt - nWStepG] > nThHi) ||
+							(pMag[cnt + nWStepG] > nThHi))
+						{
+							output[cnt] = 255;
+						}
+						break;
+					case 45:	// 135도 방향 검사
+						if ((pMag[cnt - nWStepG - 1] > nThHi) ||
+							(pMag[cnt + nWStepG + 1] > nThHi))
+						{
+							output[cnt] = 255;
+						}
+						break;
+					case 90:		// 0도 방향 검사
+						if ((pMag[cnt - 1] > nThHi) ||
+							(pMag[cnt + 1] > nThHi))
+						{
+							output[cnt] = 255;
+						}
+						break;
+					case 135:	// 45도 방향 검사
+						if ((pMag[cnt - nWStepG + 1] > nThHi) ||
+							(pMag[cnt + nWStepG - 1] > nThHi))
+						{
+							output[cnt] = 255;
+						}
+						break;
+					}
+				}
+			}
+
+			cnt++;
+		}
+	}
+
+	delete[] pMag;
+	delete[] pAng;
+	delete[] pCand;
+	
+}
+
 void gaussianFiltering(LPBYTE grayImg ,LPBYTE output)
 {
 	double** gFilter;
@@ -132,19 +285,19 @@ void toGray(LPBYTE input, LPBYTE output)
 	}
 }
 
-void copyGrayImg(LPBYTE destGray, LPBYTE targetGray)
-{
-	int cnt = 0;
-	for (int i = 0; i < BM_HEIGHT; i++)
-	{
-		for (int j = 0; j < BM_WIDTH; j++)
-		{
-			destGray[cnt] = targetGray[cnt];
-			cnt++;
-		}
-	}
+//void copyGrayImg(LPBYTE destGray, LPBYTE targetGray)
+//{
+//	int cnt = 0;
+//	for (int i = 0; i < BM_HEIGHT; i++)
+//	{
+//		for (int j = 0; j < BM_WIDTH; j++)
+//		{
+//			destGray[cnt] = targetGray[cnt];
+//			cnt++;
+//		}
+//	}
+//}
 
-}
 LRESULT CALLBACK FramInfo(HWND hWnd, LPVIDEOHDR lpVHdr)
 {
 	/*
@@ -153,13 +306,14 @@ LRESULT CALLBACK FramInfo(HWND hWnd, LPVIDEOHDR lpVHdr)
 	여기에 영상처리 코드를 넣으면 된다.
 
 	*/
+	
 	LPBYTE grayImg = new BYTE[BM_HEIGHT*BM_WIDTH];
 	LPBYTE gaussainFilteredImg = new BYTE[BM_HEIGHT*BM_WIDTH];
 	LPBYTE sobelFilteredImg = new BYTE[BM_HEIGHT*BM_WIDTH];
 
 	toGray(lpVHdr->lpData, grayImg);				//영상을 gray화 해서 grayImg에 저장
 
-	copyGrayImg(gaussainFilteredImg, grayImg);      //gaussainFilteredImg with grayImg
+	//copyGrayImg(gaussainFilteredImg, grayImg);      //gaussainFilteredImg with grayImg
 
 	gaussianFiltering(grayImg, gaussainFilteredImg);  // graussainFiltering
 
@@ -169,7 +323,7 @@ LRESULT CALLBACK FramInfo(HWND hWnd, LPVIDEOHDR lpVHdr)
 
 	int Jump = 0;
 	int cnt = 0;
-
+	
 	for (int i = 0; i < BM_HEIGHT; i++)
 	{
 		for (int j = 0; j < BM_WIDTH; j++)
