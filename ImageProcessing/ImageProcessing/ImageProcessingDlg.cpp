@@ -72,8 +72,8 @@ void sobelFiltering(LPBYTE grayImg, LPBYTE output)
 		1,2,1,
 		0,0,0,
 		-1,-2,-1 };
-	
-	int cnt = 0;
+	//int cnt=0;
+	int cnt = BM_WIDTH+1;
 	for (int r = 1; r < BM_HEIGHT - 1; r++)
 	{
 		for (int c = 1; c < BM_WIDTH - 1; c++)
@@ -84,8 +84,9 @@ void sobelFiltering(LPBYTE grayImg, LPBYTE output)
 			{
 				for (int x = -1; x <= 1; x++)
 				{
-					sumX += (sobelX[3 * (y + 1) + x + 1] * grayImg[cnt + BM_WIDTH*y + x]);
-					sumY += (sobelY[3 * (y + 1) + x + 1] * grayImg[cnt + BM_WIDTH*y + x]);
+					int currentCnt = cnt + BM_WIDTH*y + x;
+					sumX += (sobelX[3 * (y + 1) + x + 1] * grayImg[currentCnt]);
+					sumY += (sobelY[3 * (y + 1) + x + 1] * grayImg[currentCnt]);
 				}
 			}
 			output[cnt++] = sqrt((sumX*sumX + sumY*sumY)/32.0);
@@ -103,9 +104,8 @@ void cannyEdge(LPBYTE grayImg, LPBYTE output ,int nThHi ,int nThLo)
 		1,2,1,
 		0,0,0,
 		-1,-2,-1 };
-
-	int cnt = 0;
-	double *pMag = new double[BM_WIDTH*BM_HEIGHT]; // 경계선의 세기
+	int cnt = BM_WIDTH+1;
+	double* pMag = new double[BM_WIDTH*BM_HEIGHT]; // 경계선의 세기
 	LPBYTE pAng = new BYTE[BM_WIDTH*BM_HEIGHT]; // 경계선의 방향
 	for (int r = 1; r < BM_HEIGHT - 1; r++)
 	{
@@ -122,12 +122,12 @@ void cannyEdge(LPBYTE grayImg, LPBYTE output ,int nThHi ,int nThLo)
 				}
 			}
 			double sum = (sumX*sumX + sumY*sumY);
-			pMag[cnt] = sqrt(sum); // 경계선의 세기를 구했다
+			pMag[cnt] = sqrt(sum); // 한 점(cnt)에서의 경계선의 세기를 구했다
 
-			// 경계선의 방향(각도) 구하기
+			// 경계선의 방향(각도) 구하기 <== 정확히는 경계선의 방향에 수직인 각도를 구하는듯.
 			double theta;
 			if (pMag[cnt] == 0)
-				if(sumY==0)theta=0;
+				if(sumY==0)theta=0; // 근데 왜 여기선 이지랄
 				else theta=90;
 			else
 				theta=atan2((float)sumY, (float)sumX)*180.0/M_PI;
@@ -149,6 +149,7 @@ void cannyEdge(LPBYTE grayImg, LPBYTE output ,int nThHi ,int nThLo)
 	}
 	// 위에서 구한값(세기와 방향)으로 비최대값 억제
 	LPBYTE pCand = new BYTE[BM_WIDTH*BM_HEIGHT]; // 경계선 후보저장
+	memset(pCand,0,BM_WIDTH*BM_HEIGHT*(sizeof(BYTE)));
 	cnt=0;
 	for (int r = 1; r < BM_HEIGHT - 1; r++)
 	{
@@ -156,23 +157,23 @@ void cannyEdge(LPBYTE grayImg, LPBYTE output ,int nThHi ,int nThLo)
 		{
 			switch (pAng[cnt])
 			{
-			case 0:
+			case 0: //0도 방향 비교
 				if( pMag[cnt] > pMag[cnt-1] && pMag[cnt] > pMag[cnt+1])
 					pCand[cnt] = 255;
-			case 45:	
-				if (pMag[cnt] > pMag[cnt - nWStepG + 1] && pMag[cnt] > pMag[cnt + nWStepG - 1])
+			case 45: //45도 방향 비교
+				if (pMag[cnt] > pMag[cnt - BM_WIDTH + 1] && pMag[cnt] > pMag[cnt + BM_WIDTH - 1])
 				{
 					pCand[cnt] = 255;
 				}
 				break;
-			case 90:		
-				if (pMag[cnt] > pMag[cnt - nWStepG] && pMag[cnt] > pMag[cnt + nWStepG])
+			case 90: //90도 방향 비교		
+				if (pMag[cnt] > pMag[cnt - BM_WIDTH] && pMag[cnt] > pMag[cnt + BM_WIDTH])
 				{
 					pCand[cnt] = 255;
 				}
 				break;
-			case 135:	
-				if (pMag[cnt] > pMag[cnt - nWStepG - 1] && pMag[cnt] > pMag[cnt + nWStepG + 1])
+			case 135:  //135도 방향 비교
+				if (pMag[cnt] > pMag[cnt - BM_WIDTH - 1] && pMag[cnt] > pMag[cnt + BM_WIDTH + 1])
 				{
 					pCand[cnt] = 255;
 				}
@@ -182,7 +183,7 @@ void cannyEdge(LPBYTE grayImg, LPBYTE output ,int nThHi ,int nThLo)
 		}
 	}
 
-	// 위에서 구한값(경계선후보)으로 문턱값검사 후 output으로 저장
+	// 위에서 구한값(경계선후보)으로 문턱값검사 후 결과 output으로 저장
 	cnt=0;
 	for (int r = 1; r < BM_HEIGHT - 1; r++)
 	{
@@ -201,15 +202,15 @@ void cannyEdge(LPBYTE grayImg, LPBYTE output ,int nThHi ,int nThLo)
 					switch (pAng[cnt])
 					{
 					case 0:		// 90도 방향 검사
-						if ((pMag[cnt - nWStepG] > nThHi) ||
-							(pMag[cnt + nWStepG] > nThHi))
+						if ((pMag[cnt - BM_WIDTH] > nThHi) ||
+							(pMag[cnt + BM_WIDTH] > nThHi))
 						{
 							output[cnt] = 255;
 						}
 						break;
 					case 45:	// 135도 방향 검사
-						if ((pMag[cnt - nWStepG - 1] > nThHi) ||
-							(pMag[cnt + nWStepG + 1] > nThHi))
+						if ((pMag[cnt - BM_WIDTH - 1] > nThHi) ||
+							(pMag[cnt + BM_WIDTH + 1] > nThHi))
 						{
 							output[cnt] = 255;
 						}
@@ -222,8 +223,8 @@ void cannyEdge(LPBYTE grayImg, LPBYTE output ,int nThHi ,int nThLo)
 						}
 						break;
 					case 135:	// 45도 방향 검사
-						if ((pMag[cnt - nWStepG + 1] > nThHi) ||
-							(pMag[cnt + nWStepG - 1] > nThHi))
+						if ((pMag[cnt - BM_WIDTH + 1] > nThHi) ||
+							(pMag[cnt + BM_WIDTH - 1] > nThHi))
 						{
 							output[cnt] = 255;
 						}
@@ -284,7 +285,6 @@ void toGray(LPBYTE input, LPBYTE output)
 		}
 	}
 }
-
 //void copyGrayImg(LPBYTE destGray, LPBYTE targetGray)
 //{
 //	int cnt = 0;
@@ -309,15 +309,15 @@ LRESULT CALLBACK FramInfo(HWND hWnd, LPVIDEOHDR lpVHdr)
 	
 	LPBYTE grayImg = new BYTE[BM_HEIGHT*BM_WIDTH];
 	LPBYTE gaussainFilteredImg = new BYTE[BM_HEIGHT*BM_WIDTH];
-	LPBYTE sobelFilteredImg = new BYTE[BM_HEIGHT*BM_WIDTH];
+	LPBYTE filteredImg = new BYTE[BM_HEIGHT*BM_WIDTH];
 
 	toGray(lpVHdr->lpData, grayImg);				//영상을 gray화 해서 grayImg에 저장
 
 	//copyGrayImg(gaussainFilteredImg, grayImg);      //gaussainFilteredImg with grayImg
 
 	gaussianFiltering(grayImg, gaussainFilteredImg);  // graussainFiltering
-
-	sobelFiltering(gaussainFilteredImg, sobelFilteredImg);
+	cannyEdge(grayImg,filteredImg,60,30);
+	//sobelFiltering(gaussainFilteredImg, filteredImg);
 
 	//laplacianFiltering(gaussainFilteredImg, laplacianFilteredImg);
 
@@ -328,16 +328,16 @@ LRESULT CALLBACK FramInfo(HWND hWnd, LPVIDEOHDR lpVHdr)
 	{
 		for (int j = 0; j < BM_WIDTH; j++)
 		{
-			lpVHdr->lpData[Jump + 0] = sobelFilteredImg[cnt];
-			lpVHdr->lpData[Jump + 1] = sobelFilteredImg[cnt];
-			lpVHdr->lpData[Jump + 2] = sobelFilteredImg[cnt];
+			lpVHdr->lpData[Jump + 0] = filteredImg[cnt];
+			lpVHdr->lpData[Jump + 1] = filteredImg[cnt];
+			lpVHdr->lpData[Jump + 2] = filteredImg[cnt];
 
 			cnt++;
 			Jump += 3;
 		}
 	}
 	
-	delete[] sobelFilteredImg;
+	delete[] filteredImg;
 	delete[] grayImg;
 	delete[] gaussainFilteredImg;
 
