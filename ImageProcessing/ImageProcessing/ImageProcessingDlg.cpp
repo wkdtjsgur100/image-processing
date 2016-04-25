@@ -150,7 +150,7 @@ void cannyEdge(LPBYTE grayImg, LPBYTE output ,int nThHi ,int nThLo)
 	// 위에서 구한값(세기와 방향)으로 비최대값 억제
 	LPBYTE pCand = new BYTE[BM_WIDTH*BM_HEIGHT]; // 경계선 후보저장
 	memset(pCand,0,BM_WIDTH*BM_HEIGHT*(sizeof(BYTE)));
-	cnt=0;
+	cnt=BM_WIDTH+1;
 	for (int r = 1; r < BM_HEIGHT - 1; r++)
 	{
 		for (int c = 1; c < BM_WIDTH - 1; c++)
@@ -184,7 +184,7 @@ void cannyEdge(LPBYTE grayImg, LPBYTE output ,int nThHi ,int nThLo)
 	}
 
 	// 위에서 구한값(경계선후보)으로 문턱값검사 후 결과 output으로 저장
-	cnt=0;
+	cnt=BM_WIDTH+1;
 	for (int r = 1; r < BM_HEIGHT - 1; r++)
 	{
 		for (int c = 1; c < BM_WIDTH - 1; c++)
@@ -241,6 +241,61 @@ void cannyEdge(LPBYTE grayImg, LPBYTE output ,int nThHi ,int nThLo)
 	delete[] pAng;
 	delete[] pCand;
 	
+}
+
+void HoughLines(LPBYTE imgIn, int nTh)
+{
+	int diagonal = (int)sqrt( (float)BM_WIDTH*BM_WIDTH + (float)BM_HEIGHT*BM_HEIGHT ); // 대각선의 길이
+	int** meetPoints;
+	meetPoints = new int* [diagonal]; 
+	for (int i = 0; i < diagonal; i++)
+	{
+		meetPoints[i] = new int[180];
+		memset(meetPoints[i],0, 180 * sizeof(int));
+	}
+	double sinLUT[180];
+	double cosLUT[180];
+
+	for (int theta = 0; theta <= 180; theta++)
+	{
+		sinLUT[theta]=sin(theta*M_PI/180.0);
+		cosLUT[theta]=cos(theta*M_PI/180.0);
+	}
+
+	for (int r = 1; r < BM_HEIGHT - 1; r++)
+	{
+		for (int c = 1; c < BM_WIDTH - 1; c++)
+		{
+			if (imgIn[r*BM_WIDTH+c] == 255) // cannyEdge()를 먼저 실행한 이미지라고 가정
+			{
+				for (int theta = 0; theta <=180; theta++)
+				{
+					int rho = c*cosLUT[theta]+r*sinLUT[theta];
+					if(rho>=0 && rho<=diagonal)
+						meetPoints[rho][theta]++;
+				}
+			}
+		}
+	}
+
+	for (int rho = 0; rho <= diagonal; rho++)
+	{
+		for (int theta = 0; theta <= 180; theta++)
+		{
+			if (meetPoints[rho][theta] > nTh) // ThresHold 검사
+			{
+				for (int r = 1; r < BM_HEIGHT - 1; r++)
+					for (int c = 1; c < BM_WIDTH - 1; c++)
+						if(c*cosLUT[theta]+r*sinLUT[theta]==rho)
+							imgIn[r*BM_WIDTH+c]=128;
+			}
+		}
+	}
+	
+	for (int i = 0; i < diagonal; i++)
+		delete [] meetPoints[i];
+	delete [] meetPoints;
+
 }
 
 void gaussianFiltering(LPBYTE grayImg ,LPBYTE output)
@@ -317,6 +372,7 @@ LRESULT CALLBACK FramInfo(HWND hWnd, LPVIDEOHDR lpVHdr)
 
 	gaussianFiltering(grayImg, gaussainFilteredImg);  // graussainFiltering
 	cannyEdge(grayImg,filteredImg,60,30);
+	//HoughLines(filteredImg,10);
 	//sobelFiltering(gaussainFilteredImg, filteredImg);
 
 	//laplacianFiltering(gaussainFilteredImg, laplacianFilteredImg);
@@ -328,18 +384,28 @@ LRESULT CALLBACK FramInfo(HWND hWnd, LPVIDEOHDR lpVHdr)
 	{
 		for (int j = 0; j < BM_WIDTH; j++)
 		{
-			lpVHdr->lpData[Jump + 0] = filteredImg[cnt];
-			lpVHdr->lpData[Jump + 1] = filteredImg[cnt];
-			lpVHdr->lpData[Jump + 2] = filteredImg[cnt];
+			//if (filteredImg[cnt] == 127)//허프 직선~~~ 시간업어서 이렇게짬~~
+			//{
+			//	lpVHdr->lpData[Jump + 0] = 0;
+			//	lpVHdr->lpData[Jump + 1] = 0;
+			//	lpVHdr->lpData[Jump + 2] = 255;
+			//}
+			//else
+			//{
+				lpVHdr->lpData[Jump + 0] = filteredImg[cnt];
+				lpVHdr->lpData[Jump + 1] = filteredImg[cnt];
+				lpVHdr->lpData[Jump + 2] = filteredImg[cnt];
+			//}
 
 			cnt++;
 			Jump += 3;
 		}
 	}
 	
-	delete[] filteredImg;
+	
 	delete[] grayImg;
 	delete[] gaussainFilteredImg;
+	delete[] filteredImg;
 
 	return (LRESULT)true;
 }
