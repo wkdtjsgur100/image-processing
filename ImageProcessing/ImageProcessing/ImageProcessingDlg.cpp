@@ -150,7 +150,7 @@ void cannyEdge(LPBYTE grayImg, LPBYTE output ,int nThHi ,int nThLo)
 	// 위에서 구한값(세기와 방향)으로 비최대값 억제
 	LPBYTE pCand = new BYTE[BM_WIDTH*BM_HEIGHT]; // 경계선 후보저장
 	memset(pCand,0,BM_WIDTH*BM_HEIGHT*(sizeof(BYTE)));
-	cnt=0;
+	cnt=BM_WIDTH+1;
 	for (int r = 1; r < BM_HEIGHT - 1; r++)
 	{
 		for (int c = 1; c < BM_WIDTH - 1; c++)
@@ -184,7 +184,7 @@ void cannyEdge(LPBYTE grayImg, LPBYTE output ,int nThHi ,int nThLo)
 	}
 
 	// 위에서 구한값(경계선후보)으로 문턱값검사 후 결과 output으로 저장
-	cnt=0;
+	cnt=BM_WIDTH+1;
 	for (int r = 1; r < BM_HEIGHT - 1; r++)
 	{
 		for (int c = 1; c < BM_WIDTH - 1; c++)
@@ -241,6 +241,98 @@ void cannyEdge(LPBYTE grayImg, LPBYTE output ,int nThHi ,int nThLo)
 	delete[] pAng;
 	delete[] pCand;
 	
+}
+
+void HoughLines(LPBYTE imgIn, LPBYTE imgOut, int nTh)
+{
+	int diagonal = 2 * ((int)sqrt( (float)BM_WIDTH*BM_WIDTH + (float)BM_HEIGHT*BM_HEIGHT )); // 대각선의 길이
+	int** meetPoints;
+	double p2d = 3.141592654 / 180.0;
+
+	meetPoints = new int* [diagonal]; 
+	for (int i = 0; i < diagonal; i++)
+	{
+		meetPoints[i] = new int[180];
+		memset(meetPoints[i],0, 180 * sizeof(int));
+	}
+	double sinLUT[180];
+	double cosLUT[180];
+
+	for (int theta = 0; theta < 180; theta++)
+	{
+		sinLUT[theta]= sin(theta*p2d);
+		cosLUT[theta]= cos(theta*p2d);
+	}
+	int cnt = 0;
+	for (int y = 0; y < BM_HEIGHT; y++)
+	{
+		for (int x = 0; x < BM_WIDTH; x++)
+		{
+			if (imgIn[cnt] == 255) // cannyEdge()를 먼저 실행한 이미지라고 가정
+			{
+				for (int theta = 0; theta <180; theta++)
+				{
+					int rho = (int)(x*cosLUT[theta]+y*sinLUT[theta]);
+					if(rho>=0 && rho<diagonal)
+						meetPoints[rho][theta]++;
+				}
+			}
+			cnt++;
+		}
+	}
+
+	for (int rho = 0; rho < diagonal; rho++)
+	{
+		for (int theta = 0; theta <180; theta++)
+		{
+			if (meetPoints[rho][theta] > nTh) // threshold 검사
+			{
+				cnt = 0;
+
+				int x, _y;
+				for(int y = 0; y < BM_HEIGHT-1; y++)
+				{
+					if (theta == 0)
+					{
+						x = rho;
+					}
+					else if (theta == 90)
+					{
+						x = 0;
+					}
+					else
+					{
+						x = (int)((rho - y*sinLUT[theta]) / cosLUT[theta]);
+					}
+
+					if (x < BM_WIDTH && x >= 0)
+						imgIn[y*BM_WIDTH + x] = 127;
+				}
+				for (int _x = 0; _x < BM_WIDTH; _x++)
+				{
+					if (theta == 0)
+					{
+					}
+					else if (theta == 90)
+					{
+						_y = 0;
+					}
+					else
+					{
+						_y = (int)((rho - _x*cosLUT[theta]) / sinLUT[theta]);
+					}
+
+					if (_y < BM_HEIGHT-1 && _y >= 0)
+						imgIn[_y*BM_WIDTH + _x] = 127;
+				}
+			}
+		}
+	}
+	
+	for (int i = 0; i < diagonal; i++)
+		delete [] meetPoints[i];
+	delete [] meetPoints;
+
 }
 
 void gaussianFiltering(LPBYTE grayImg ,LPBYTE output)
@@ -310,13 +402,17 @@ LRESULT CALLBACK FramInfo(HWND hWnd, LPVIDEOHDR lpVHdr)
 	LPBYTE grayImg = new BYTE[BM_HEIGHT*BM_WIDTH];
 	LPBYTE gaussainFilteredImg = new BYTE[BM_HEIGHT*BM_WIDTH];
 	LPBYTE filteredImg = new BYTE[BM_HEIGHT*BM_WIDTH];
+	LPBYTE houghImg = new BYTE[BM_HEIGHT*BM_WIDTH];
+
+	memset(houghImg, 0, sizeof(BYTE)*BM_WIDTH*BM_HEIGHT);
 
 	toGray(lpVHdr->lpData, grayImg);				//영상을 gray화 해서 grayImg에 저장
 
 	//copyGrayImg(gaussainFilteredImg, grayImg);      //gaussainFilteredImg with grayImg
 
 	gaussianFiltering(grayImg, gaussainFilteredImg);  // graussainFiltering
-	cannyEdge(grayImg,filteredImg,60,30);
+	cannyEdge(gaussainFilteredImg,filteredImg,50,20);
+	HoughLines(filteredImg,houghImg,120);
 	//sobelFiltering(gaussainFilteredImg, filteredImg);
 
 	//laplacianFiltering(gaussainFilteredImg, laplacianFilteredImg);
@@ -328,18 +424,29 @@ LRESULT CALLBACK FramInfo(HWND hWnd, LPVIDEOHDR lpVHdr)
 	{
 		for (int j = 0; j < BM_WIDTH; j++)
 		{
+			/*
+			if(houghImg[cnt] != 0)
+			{
+				lpVHdr->lpData[Jump + 0] = 255;
+				lpVHdr->lpData[Jump + 1] = 0;
+				lpVHdr->lpData[Jump + 2] = 0;
+			}
+			*/
+			
 			lpVHdr->lpData[Jump + 0] = filteredImg[cnt];
 			lpVHdr->lpData[Jump + 1] = filteredImg[cnt];
 			lpVHdr->lpData[Jump + 2] = filteredImg[cnt];
-
+			
 			cnt++;
 			Jump += 3;
 		}
 	}
 	
-	delete[] filteredImg;
+	
 	delete[] grayImg;
 	delete[] gaussainFilteredImg;
+	delete[] filteredImg;
+	delete[] houghImg;
 
 	return (LRESULT)true;
 }
