@@ -312,6 +312,7 @@ void HoughLines(LPBYTE imgIn, LPBYTE imgOut, int nTh)
 				{
 					if (theta == 0)
 					{
+						_y = rho;
 					}
 					else if (theta == 90)
 					{
@@ -404,15 +405,15 @@ LRESULT CALLBACK FramInfo(HWND hWnd, LPVIDEOHDR lpVHdr)
 	LPBYTE filteredImg = new BYTE[BM_HEIGHT*BM_WIDTH];
 	LPBYTE houghImg = new BYTE[BM_HEIGHT*BM_WIDTH];
 
-	memset(houghImg, 0, sizeof(BYTE)*BM_WIDTH*BM_HEIGHT);
+	memset(grayImg, 0, sizeof(BYTE)*BM_WIDTH*BM_HEIGHT);
 
-	toGray(lpVHdr->lpData, grayImg);				//영상을 gray화 해서 grayImg에 저장
+	//toGray(lpVHdr->lpData, grayImg);				//영상을 gray화 해서 grayImg에 저장
 
 	//copyGrayImg(gaussainFilteredImg, grayImg);      //gaussainFilteredImg with grayImg
 
-	gaussianFiltering(grayImg, gaussainFilteredImg);  // graussainFiltering
-	cannyEdge(gaussainFilteredImg,filteredImg,50,20);
-	HoughLines(filteredImg,houghImg,120);
+	//gaussianFiltering(grayImg, gaussainFilteredImg);  // graussainFiltering
+	//cannyEdge(gaussainFilteredImg,filteredImg,50,20);
+	//HoughLines(filteredImg,houghImg,120);
 	//sobelFiltering(gaussainFilteredImg, filteredImg);
 
 	//laplacianFiltering(gaussainFilteredImg, laplacianFilteredImg);
@@ -432,16 +433,103 @@ LRESULT CALLBACK FramInfo(HWND hWnd, LPVIDEOHDR lpVHdr)
 				lpVHdr->lpData[Jump + 2] = 0;
 			}
 			*/
-			
-			lpVHdr->lpData[Jump + 0] = filteredImg[cnt];
-			lpVHdr->lpData[Jump + 1] = filteredImg[cnt];
-			lpVHdr->lpData[Jump + 2] = filteredImg[cnt];
+			BYTE R = lpVHdr->lpData[Jump + 2];
+			BYTE G = lpVHdr->lpData[Jump + 1];
+			BYTE B = lpVHdr->lpData[Jump + 0];
+			double _max, _min;
+
+			_max = max(R,G);
+			_max = max(_max, B);
+			_min = min(R, G);
+			_min = min(_min, B);
+
+			//BYTE H = (BYTE)(acos( (R - 0.5*G - 0.5*B)/sqrt(R*R + G*G + B*B - R*G - R*B - G*B)));
+			double H;
+			double V = _max;
+			double S = (_max != 0.0) ? (_max - _min) / _max : 0.0;
+
+			if (S == 0.0)
+				H = 0;
+			else
+			{
+				double delta = _max - _min;
+				if (R == _max) 
+					H = (G - B) / delta;
+				else if (G == _max)
+					H = 2.0 + (B - R) / delta;
+				else if (B == _max)
+					H = 4.0 + (R - G) / delta;
+				H *= 60.0;
+				if (H < 0.0) 
+					H += 360.0;
+
+			}
+			/*if (G < B)
+				H = 360 - H;*/
+
+			if ( H>180 && H<220 && S>0.2 && V>50)
+			{
+				grayImg[cnt] = 255;
+			}
+			else
+			{
+				grayImg[cnt] = 0;
+			}
+			//lpVHdr->lpData[Jump + 0] = filteredImg[cnt];
+			//lpVHdr->lpData[Jump + 1] = filteredImg[cnt];
+			//lpVHdr->lpData[Jump + 2] = filteredImg[cnt];
 			
 			cnt++;
 			Jump += 3;
 		}
 	}
+
+	//gaussianFiltering(grayImg, gaussainFilteredImg);
+	cnt = 0;
+	Jump = 0;
 	
+	BYTE copyImg[BM_HEIGHT][BM_WIDTH];
+
+	for (int i = 0; i < BM_HEIGHT; i++)
+	{
+		for (int j = 0; j < BM_WIDTH; j++)
+		{
+			copyImg[i][j] = grayImg[cnt];
+			copyImg[i][j] = grayImg[cnt];
+			copyImg[i][j] = grayImg[cnt];
+			
+			cnt++;
+			Jump += 3;
+		}
+	}
+
+	for (int i = 0; i < BM_HEIGHT; i += 10)
+	{
+		for (int j = 0; j < BM_WIDTH; j+=10)
+		{
+			for (int s_y = 0; s_y< 10; s_y++)
+			{
+				for (int s_x = 0; s_x < 10; s_x++)
+				{
+					copyImg[i + s_y][j + s_x] = copyImg[i][j];
+				}
+			}
+		}
+	}
+	cnt = 0;
+	Jump = 0;
+
+	for (int i = 0; i < BM_HEIGHT; i++)
+	{
+		for (int j = 0; j < BM_WIDTH; j++)
+		{
+			lpVHdr->lpData[Jump + 2] = copyImg[i][j];
+			lpVHdr->lpData[Jump + 1] = copyImg[i][j];
+			lpVHdr->lpData[Jump + 0] = copyImg[i][j];
+			
+			Jump += 3;
+		}
+	}
 	
 	delete[] grayImg;
 	delete[] gaussainFilteredImg;
@@ -535,6 +623,8 @@ BOOL CImageProcessingDlg::OnInitDialog()
 	//  프레임워크가 이 작업을 자동으로 수행합니다.
 	SetIcon(m_hIcon, TRUE);			// 큰 아이콘을 설정합니다.
 	SetIcon(m_hIcon, FALSE);		// 작은 아이콘을 설정합니다.
+	
+
 
 	// TODO: 여기에 추가 초기화 작업을 추가합니다.
 	BITMAPINFO BmInfo;
@@ -546,7 +636,9 @@ BOOL CImageProcessingDlg::OnInitDialog()
 	{
 		return false;
 	}
+	
 	capGetVideoFormat(m_HCam, &BmInfo, sizeof(BITMAPINFO));
+	
 	if (BmInfo.bmiHeader.biBitCount != 24)
 	{
 		BmInfo.bmiHeader.biBitCount = 24;
@@ -557,6 +649,7 @@ BOOL CImageProcessingDlg::OnInitDialog()
 
 	if (capSetCallbackOnFrame(this->m_HCam, FramInfo) == false)
 		return false;
+
 	capPreviewRate(m_HCam, 10);
 	capOverlay(m_HCam, false);
 	capPreview(m_HCam, true);
